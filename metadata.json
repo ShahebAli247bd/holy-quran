@@ -1,0 +1,5 @@
+{
+  "name": "Holy Al Quran",
+  "description": "A comprehensive Al Quran application with multi-language support (Arabic, English, Bangla), audio recitations, search, bookmarks, and offline access.",
+  "requestFramePermissions": []
+}
