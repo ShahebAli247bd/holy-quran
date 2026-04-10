@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 
+import { STATIC_SURAHS } from '../data/surah-list';
+
 interface Ayah {
   id: number;
   surah_id: number;
@@ -48,8 +50,8 @@ interface QuranContextType {
 const QuranContext = createContext<QuranContextType | undefined>(undefined);
 
 export const QuranProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [surahs, setSurahs] = useState<Surah[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [surahs, setSurahs] = useState<Surah[]>(STATIC_SURAHS);
+  const [loading, setLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null);
   const [currentSurah, setCurrentSurah] = useState<Surah | null>(null);
@@ -93,11 +95,12 @@ export const QuranProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fetchSurahs = async () => {
     try {
       const res = await axios.get('/api/surahs');
-      setSurahs(res.data);
+      if (res.data && res.data.length > 0) {
+        setSurahs(res.data);
+      }
     } catch (error) {
-      console.error('Failed to fetch surahs', error);
-    } finally {
-      setLoading(false);
+      console.error('Failed to fetch surahs from API, using static fallback', error);
+      // Fallback is already set as initial state
     }
   };
 
@@ -106,8 +109,10 @@ export const QuranProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       await axios.post('/api/sync/surahs');
       await fetchSurahs();
+      toast.success('Surah list updated');
     } catch (error) {
       console.error('Sync failed', error);
+      toast.error('Sync failed. Using offline data.');
     } finally {
       setIsSyncing(false);
     }
@@ -133,7 +138,7 @@ export const QuranProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       toast.success('Full Quran downloaded successfully!');
     } catch (error) {
       console.error('Full sync failed', error);
-      toast.error('Full sync failed. Please try again.');
+      toast.error('Full sync failed. Please check your connection.');
     } finally {
       setIsSyncing(false);
       setSyncProgress(null);
@@ -145,15 +150,37 @@ export const QuranProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const res = await axios.get(`/api/surahs/${id}`);
       if (!res.data.ayahs || res.data.ayahs.length === 0) {
-        // Sync ayahs for this surah if missing
-        await axios.post(`/api/sync/ayahs/${id}`);
-        const retryRes = await axios.get(`/api/surahs/${id}`);
-        setCurrentSurah(retryRes.data);
+        // Try to sync if missing
+        try {
+          await axios.post(`/api/sync/ayahs/${id}`);
+          const retryRes = await axios.get(`/api/surahs/${id}`);
+          setCurrentSurah(retryRes.data);
+          // Cache in localStorage for extreme offline fallback
+          localStorage.setItem(`quran-surah-${id}`, JSON.stringify(retryRes.data));
+        } catch (syncErr) {
+          console.error('Failed to sync ayahs', syncErr);
+          // Check localStorage fallback
+          const cached = localStorage.getItem(`quran-surah-${id}`);
+          if (cached) {
+            setCurrentSurah(JSON.parse(cached));
+            toast.info('Using offline cached version');
+          } else {
+            toast.error('Surah data not available offline. Please sync.');
+          }
+        }
       } else {
         setCurrentSurah(res.data);
+        localStorage.setItem(`quran-surah-${id}`, JSON.stringify(res.data));
       }
     } catch (error) {
       console.error('Failed to fetch surah', error);
+      const cached = localStorage.getItem(`quran-surah-${id}`);
+      if (cached) {
+        setCurrentSurah(JSON.parse(cached));
+        toast.info('Using offline cached version');
+      } else {
+        toast.error('Could not connect to server');
+      }
     } finally {
       setLoading(false);
     }

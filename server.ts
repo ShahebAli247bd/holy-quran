@@ -8,6 +8,8 @@ import axios from 'axios';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import { STATIC_SURAHS } from './src/data/surah-list.js';
+
 const db = new Database('quran.db');
 
 // Initialize Database
@@ -49,6 +51,32 @@ db.exec(`
     value TEXT
   );
 `);
+
+// Seed Surahs if empty
+const surahCount = db.prepare('SELECT COUNT(*) as count FROM surahs').get() as { count: number };
+if (surahCount.count === 0) {
+  console.log('Seeding initial surah list...');
+  const insert = db.prepare(`
+    INSERT INTO surahs (id, name_arabic, name_complex, name_simple, revelation_place, revelation_order, verses_count, pages)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  
+  const transaction = db.transaction((data) => {
+    for (const surah of data) {
+      insert.run(
+        surah.id,
+        surah.name_arabic,
+        surah.name_complex,
+        surah.name_simple,
+        surah.revelation_place,
+        surah.revelation_order,
+        surah.verses_count,
+        JSON.stringify([])
+      );
+    }
+  });
+  transaction(STATIC_SURAHS);
+}
 
 // Migration: Add text_tajweed to ayahs if it doesn't exist
 try {
