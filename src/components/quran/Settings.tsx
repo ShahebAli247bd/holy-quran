@@ -4,11 +4,12 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Trash2, Info } from 'lucide-react';
+import { RefreshCw, Trash2, Info, Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Progress } from '@/components/ui/progress';
 
 export const Settings: React.FC = () => {
-  const { fontSize, setFontSize, theme, setTheme, syncData, isSyncing } = useQuran();
+  const { fontSize, setFontSize, theme, setTheme, syncData, syncFullQuran, isSyncing, syncProgress } = useQuran();
 
   const handleClearCache = () => {
     localStorage.clear();
@@ -50,15 +51,50 @@ export const Settings: React.FC = () => {
         <div className="space-y-4">
           <Label className="text-lg">Data Management</Label>
           <div className="grid gap-4">
-            <Button 
-              variant="outline" 
-              className="justify-start gap-2 h-12" 
-              onClick={syncData}
-              disabled={isSyncing}
-            >
-              <RefreshCw className={isSyncing ? "animate-spin" : ""} />
-              {isSyncing ? "Syncing Surahs..." : "Sync Surah List"}
-            </Button>
+            <div className="grid gap-2">
+              <Button 
+                variant="outline" 
+                className="justify-start gap-2 h-12" 
+                onClick={syncData}
+                disabled={isSyncing}
+              >
+                <RefreshCw className={isSyncing && !syncProgress ? "animate-spin" : ""} />
+                {isSyncing && !syncProgress ? "Syncing Surahs..." : "Sync Surah List"}
+              </Button>
+              <p className="text-xs text-muted-foreground px-1">
+                Updates the list of 114 Surahs.
+              </p>
+            </div>
+
+            <div className="grid gap-2">
+              <Button 
+                variant="default" 
+                className="justify-start gap-2 h-12" 
+                onClick={syncFullQuran}
+                disabled={isSyncing}
+              >
+                {isSyncing && syncProgress ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <Download />
+                )}
+                {isSyncing && syncProgress 
+                  ? `Downloading Quran (${syncProgress.current}/${syncProgress.total})...` 
+                  : "Download Full Quran (Offline Access)"}
+              </Button>
+              {syncProgress && (
+                <div className="space-y-1 px-1">
+                  <Progress value={(syncProgress.current / syncProgress.total) * 100} />
+                  <p className="text-[10px] text-right text-muted-foreground">
+                    {Math.round((syncProgress.current / syncProgress.total) * 100)}% Complete
+                  </p>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground px-1">
+                Downloads all 6,236 verses with translations and audio links for offline use.
+              </p>
+            </div>
+
             <Button 
               variant="outline" 
               className="justify-start gap-2 h-12 text-destructive hover:text-destructive"

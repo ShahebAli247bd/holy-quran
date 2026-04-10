@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
+import { toast } from 'sonner';
 
 interface Ayah {
   id: number;
@@ -39,7 +40,9 @@ interface QuranContextType {
   setLastRead: (surahId: number, ayahId: number) => void;
   streak: number;
   syncData: () => Promise<void>;
+  syncFullQuran: () => Promise<void>;
   isSyncing: boolean;
+  syncProgress: { current: number; total: number } | null;
 }
 
 const QuranContext = createContext<QuranContextType | undefined>(undefined);
@@ -48,6 +51,7 @@ export const QuranProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null);
   const [currentSurah, setCurrentSurah] = useState<Surah | null>(null);
   const [fontSize, setFontSize] = useState(() => Number(localStorage.getItem('quran-font-size')) || 24);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('quran-theme') as 'light' | 'dark') || 'light');
@@ -90,9 +94,6 @@ export const QuranProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const res = await axios.get('/api/surahs');
       setSurahs(res.data);
-      if (res.data.length === 0) {
-        // Database is empty, trigger sync
-      }
     } catch (error) {
       console.error('Failed to fetch surahs', error);
     } finally {
@@ -112,11 +113,38 @@ export const QuranProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const syncFullQuran = async () => {
+    setIsSyncing(true);
+    try {
+      // 1. Ensure surah list is synced
+      await axios.post('/api/sync/surahs');
+      const res = await axios.get('/api/surahs');
+      const surahList = res.data;
+      setSurahs(surahList);
+
+      // 2. Sync ayahs for each surah
+      setSyncProgress({ current: 0, total: surahList.length });
+      for (let i = 0; i < surahList.length; i++) {
+        const surah = surahList[i];
+        setSyncProgress({ current: i + 1, total: surahList.length });
+        await axios.post(`/api/sync/ayahs/${surah.id}`);
+      }
+      
+      toast.success('Full Quran downloaded successfully!');
+    } catch (error) {
+      console.error('Full sync failed', error);
+      toast.error('Full sync failed. Please try again.');
+    } finally {
+      setIsSyncing(false);
+      setSyncProgress(null);
+    }
+  };
+
   const fetchSurah = async (id: number) => {
     setLoading(true);
     try {
       const res = await axios.get(`/api/surahs/${id}`);
-      if (res.data.ayahs.length === 0) {
+      if (!res.data.ayahs || res.data.ayahs.length === 0) {
         // Sync ayahs for this surah if missing
         await axios.post(`/api/sync/ayahs/${id}`);
         const retryRes = await axios.get(`/api/surahs/${id}`);
@@ -147,7 +175,7 @@ export const QuranProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       surahs, loading, currentSurah, fetchSurah,
       fontSize, setFontSize, theme, setTheme,
       bookmarks, toggleBookmark, lastRead, setLastRead,
-      streak, syncData, isSyncing
+      streak, syncData, syncFullQuran, isSyncing, syncProgress
     }}>
       {children}
     </QuranContext.Provider>
