@@ -3,6 +3,8 @@ import axios from 'axios';
 import { toast } from 'sonner';
 
 import { STATIC_SURAHS } from '../data/surah-list';
+import { STATIC_AL_FATIHAH } from '../data/static-surah-1';
+import { fetchSurahFromPublicApi } from '../services/quranPublicApi';
 
 interface Ayah {
   id: number;
@@ -148,39 +150,57 @@ export const QuranProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fetchSurah = async (id: number) => {
     setLoading(true);
     try {
-      const res = await axios.get(`/api/surahs/${id}`);
-      if (!res.data.ayahs || res.data.ayahs.length === 0) {
-        // Try to sync if missing
-        try {
-          await axios.post(`/api/sync/ayahs/${id}`);
-          const retryRes = await axios.get(`/api/surahs/${id}`);
-          setCurrentSurah(retryRes.data);
-          // Cache in localStorage for extreme offline fallback
-          localStorage.setItem(`quran-surah-${id}`, JSON.stringify(retryRes.data));
-        } catch (syncErr) {
-          console.error('Failed to sync ayahs', syncErr);
-          // Check localStorage fallback
-          const cached = localStorage.getItem(`quran-surah-${id}`);
-          if (cached) {
-            setCurrentSurah(JSON.parse(cached));
-            toast.info('Using offline cached version');
-          } else {
-            toast.error('Surah data not available offline. Please sync.');
-          }
+      // 1. Try local API
+      try {
+        const res = await axios.get(`/api/surahs/${id}`);
+        if (res.data && res.data.ayahs && res.data.ayahs.length > 0) {
+          setCurrentSurah(res.data);
+          localStorage.setItem(`quran-surah-${id}`, JSON.stringify(res.data));
+          setLoading(false);
+          return;
         }
-      } else {
-        setCurrentSurah(res.data);
-        localStorage.setItem(`quran-surah-${id}`, JSON.stringify(res.data));
+      } catch (localErr) {
+        console.warn('Local API failed, moving to fallbacks', localErr);
       }
-    } catch (error) {
-      console.error('Failed to fetch surah', error);
+
+      // 2. Try localStorage fallback (Fastest offline fallback)
       const cached = localStorage.getItem(`quran-surah-${id}`);
       if (cached) {
-        setCurrentSurah(JSON.parse(cached));
-        toast.info('Using offline cached version');
-      } else {
-        toast.error('Could not connect to server');
+        const cachedData = JSON.parse(cached);
+        if (cachedData && cachedData.ayahs && cachedData.ayahs.length > 0) {
+          setCurrentSurah(cachedData);
+          toast.info('Using offline cached version');
+          setLoading(false);
+          return;
+        }
       }
+
+      // 3. Try Public API Fallback (Direct from Quran.com)
+      try {
+        const publicData = await fetchSurahFromPublicApi(id);
+        const surahInfo = surahs.find(s => s.id === id) || STATIC_SURAHS.find(s => s.id === id);
+        const fullSurah = { ...surahInfo, ...publicData } as Surah;
+        setCurrentSurah(fullSurah);
+        localStorage.setItem(`quran-surah-${id}`, JSON.stringify(fullSurah));
+        toast.info('Fetched from public Quran API');
+        setLoading(false);
+        return;
+      } catch (publicErr) {
+        console.warn('Public API fallback failed', publicErr);
+      }
+
+      // 4. Ultimate Static Fallback for Surah 1
+      if (id === 1) {
+        setCurrentSurah(STATIC_AL_FATIHAH as Surah);
+        toast.info('Using built-in version of Al-Fatihah');
+        setLoading(false);
+        return;
+      }
+
+      toast.error('Surah data not available. Please check your connection.');
+    } catch (error) {
+      console.error('Critical failure in fetchSurah', error);
+      toast.error('An unexpected error occurred while loading the Surah.');
     } finally {
       setLoading(false);
     }

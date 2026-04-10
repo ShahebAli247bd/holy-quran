@@ -22,10 +22,29 @@ export const SurahView: React.FC = () => {
     }
   }, [id]);
 
-  if (loading || !currentSurah) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!currentSurah) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center space-y-4">
+        <div className="p-4 rounded-full bg-destructive/10 text-destructive">
+          <ChevronLeft className="h-12 w-12" />
+        </div>
+        <h3 className="text-xl font-bold">Surah Not Available</h3>
+        <p className="text-muted-foreground max-w-md">
+          We couldn't load this Surah from our local database or public API. 
+          Please check your internet connection and try again.
+        </p>
+        <div className="flex gap-4">
+          <Button onClick={() => navigate('/')} variant="outline">Go Home</Button>
+          <Button onClick={() => id && fetchSurah(Number(id))}>Retry Loading</Button>
+        </div>
       </div>
     );
   }
